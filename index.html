@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF to Excel 智慧轉換工具 | Client-Side 零後端安全解析</title>
+  
+  <!-- Google 字體 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- 主樣式表 -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- 第三方函式庫 CDN (純客戶端運作) -->
+  <!-- 1. Mozilla pdf.js (PDF 讀取與解碼) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- 2. exceljs (Excel 範本載入與注入) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <!-- 3. FileSaver.js (瀏覽器觸發檔案下載) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+  <!-- 背景發光特效 -->
+  <div class="ambient-glow"></div>
+
+  <div class="app-container">
+    <!-- 頂部頁頭 -->
+    <header class="app-header">
+      <div class="brand-badge">
+        <span class="dot"></span>
+        <span>純瀏覽器客戶端解析 · 隱私零外洩</span>
+      </div>
+      <h1 class="app-title">PDF to Excel 智慧表單轉換工具</h1>
+      <p class="app-subtitle">拖曳或選擇 PDF 檔案，前端引擎將自動識別特徵關鍵字、擷取關鍵資料，並精確填入排版完整的 Excel 範本中。</p>
+    </header>
+
+    <!-- 主工作區 -->
+    <main class="workflow-grid">
+      <!-- 步驟 1: 上傳與選擇檔案區 -->
+      <section class="card upload-section">
+        <div id="dropzone" class="dropzone-container">
+          <div class="dropzone-icon-wrap">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <line x1="9" y1="15" x2="12" y2="12"></line>
+              <line x1="15" y1="15" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <h3 class="dropzone-title">拖曳 PDF 檔案至此處</h3>
+          <p class="dropzone-desc">支援標準商業採購單、報價單等電子 PDF 文件</p>
+
+          <!-- 隱藏原生檔案輸入框 -->
+          <input type="file" id="fileInput" accept="application/pdf,.pdf" style="display: none;" />
+
+          <div class="action-buttons-group">
+            <!-- 點擊彈出自選檔案按鈕 -->
+            <button id="btnBrowse" type="button" class="btn btn-primary" title="開啟檔案選取對話框">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              選擇 PDF 檔案
+            </button>
+
+            <!-- 一鍵載入示範檔案按鈕 -->
+            <button id="btnLoadDemo" type="button" class="btn btn-secondary" title="立刻載入內建採購單驗證">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+              載入示範 Demo (標準採購單)
+            </button>
+          </div>
+
+          <!-- 已選檔案標籤 -->
+          <div id="fileBadge" class="file-badge" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            <span id="fileName">未選擇檔案</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 步驟 2: 人機協同核對與預覽面板 (Human-in-the-Loop) -->
+      <section id="previewPanel" class="card preview-panel">
+        <div class="panel-header">
+          <div class="panel-title-area">
+            <h2>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              資料擷取核對與手動覆寫
+            </h2>
+            <p>請檢視系統解析出的欄位數值，點選文字框可直接手動修正，確認無誤後即可匯出。</p>
+          </div>
+
+          <!-- 表單格式下拉選單（防呆切換） -->
+          <div class="template-selector-wrap">
+            <label for="configSelect">表單類型：</label>
+            <select id="configSelect" class="select-input">
+              <!-- 由 js/app.js 動態填充 -->
+            </select>
+          </div>
+        </div>
+
+        <!-- 欄位動態網格清單 -->
+        <div id="fieldsContainer" class="fields-grid">
+          <!-- 由 js/app.js 依抽取結果動態產生卡片 -->
+        </div>
+
+        <!-- 底部確認匯出動作列 -->
+        <div class="panel-footer">
+          <div id="templateInfo" class="template-info-badge">
+            目前套用範本：標準採購單 (PO)
+          </div>
+
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <button id="btnReset" type="button" class="btn btn-secondary">
+              重設 / 換一個檔案
+            </button>
+            <button id="btnExportExcel" type="button" class="btn btn-success">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              確認無誤，產出並下載 Excel
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 提示訊息容器 (Toast) -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- 應用程式模組腳本 -->
+  <script src="js/config.js"></script>
+  <script src="js/pdf-parser.js"></script>
+  <script src="js/excel-writer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
