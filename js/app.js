@@ -537,11 +537,13 @@ document.addEventListener('DOMContentLoaded', () => {
         hrConfig: state.hrConfig
       });
 
-      // 智慧產出檔名：若使用者有上傳自訂 Excel，沿用其原檔名作為前綴
+      // 智慧產出檔名：若使用者有上傳既有 Excel，智慧去除先前的年月後綴並更新為當前月份
       const yyyymm = state.targetMonth.substring(0, 7).replace('-', '_');
       let outName = `cost_${yyyymm}.xlsx`;
       if (state.customCostExcelName) {
-        const baseName = state.customCostExcelName.replace(/\.xlsx$/i, '');
+        let baseName = state.customCostExcelName.replace(/\.xlsx$/i, '');
+        // 智慧過濾先前產出時附加的年月 (例如 _2026_08, _2026-08, _202608, _08)，避免連續跨月產生像 cost_2026_08_2026_09.xlsx
+        baseName = baseName.replace(/_\d{4}[_-]\d{2}$/, '').replace(/_\d{4}\d{2}$/, '').replace(/_\d{2}$/, '');
         outName = `${baseName}_${yyyymm}.xlsx`;
       }
 
