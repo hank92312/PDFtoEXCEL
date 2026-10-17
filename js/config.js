@@ -1,66 +1,147 @@
 /**
- * PDF to Excel 轉換工具設定檔
- * 定義支援的表單類型、指紋辨識關鍵字與儲存格映射規則
+ * config.js - 智慧轉換工具設定檔與規則定義
+ * 支援人事成本核算 (HR Cost) 與標準採購單 (PO) 多模式，並提供彈性設定自訂功能
  */
-const PDF_CONFIGS = {
-  // 標準採購單 (PO)
-  po_standard: {
-    id: "po_standard",
-    name: "標準採購單 (PO)",
-    description: "適用於常見標準商業採購單，包含單號、日期、供應商代碼與總計金額",
-    // 指紋辨識關鍵字（命中其中關鍵字即自動匹配）
-    fingerprintKeywords: ["PURCHASE ORDER", "採購單", "PO NUMBER", "供應商代碼", "採購單號"],
-    // 對應的空白 Excel 範本路徑
-    templateUrl: "./templates/template_po.xlsx",
-    // 匯出檔名預設命名規則
-    outputFilenamePattern: "採購單_{poNumber}.xlsx",
-    // 單一欄位映射規則
-    fields: [
-      {
-        key: "poNumber",
-        label: "採購單號",
-        type: "string",
-        regex: /(?:PO\s*(?:NO|編號|Number)?|採購單號)[:：\s]*([A-Z0-9-]+)/i,
-        targetCell: "B3",
-        required: true,
-        placeholder: "例如：PO-2026-8899"
-      },
-      {
-        key: "orderDate",
-        label: "下單日期",
-        type: "date",
-        regex: /(?:下單日期|Order\s*Date|日期|Date)[:：\s]*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/i,
-        targetCell: "E3",
-        required: true,
-        placeholder: "例如：2026-10-11"
-      },
-      {
-        key: "vendorCode",
-        label: "供應商代碼",
-        type: "string",
-        regex: /(?:供應商代碼|Vendor\s*(?:Code|ID)?|廠商編號)[:：\s]*([A-Z0-9_-]+)/i,
-        targetCell: "B4",
-        required: false,
-        placeholder: "例如：VEND-TW-089"
-      },
-      {
-        key: "purchaser",
-        label: "採購負責人",
-        type: "string",
-        regex: /(?:採購負責人|Purchaser|經辦人|採購員)[:：\s]*([\u4e00-\u9fa5A-Za-z\s]+?)(?=\s+(?:電話|Email|供應商|狀態|$|\n))/i,
-        targetCell: "B5",
-        required: false,
-        placeholder: "例如：王小明"
-      },
-      {
-        key: "totalAmount",
-        label: "總計金額 (NT$)",
-        type: "number",
-        regex: /(?:總計金額|總計|TOTAL(?:\s*AMOUNT)?|合計)[:：\s]*[$NT¥\s]*([0-9,]+(?:\.[0-9]{1,2})?)/i,
-        targetCell: "F20",
-        required: true,
-        placeholder: "例如：158000"
+
+// 預設人事成本映射配置
+const DEFAULT_HR_CONFIG = {
+  // 年份設定 (預設民國115年/西元2026)
+  defaultYear: 2026,
+  
+  // 工作表與欄位映射規則
+  sheets: {
+    employeeSettings: {
+      sheetName: '員工設定',
+      codeCol: 'A',
+      nameCol: 'B',
+      startRow: 4,
+      endRow: 13
+    },
+    laborInsurance: {
+      sheetName: '勞保',
+      summaryMonthCol: 'A',
+      summaryTotalCol: 'B',
+      summaryStatusCol: 'D',
+      summaryStartRow: 4,
+      summaryEndRow: 15,
+      detailStartRow: 21,
+      detailEndRow: 140,
+      detailMonthCol: 'A',
+      detailNameCol: 'B',
+      detailPersonalCol: 'C',
+      detailCompanyCol: 'D'
+    },
+    laborPension: {
+      sheetName: '勞退',
+      summaryMonthCol: 'A',
+      summaryTotalCol: 'B',
+      summaryStatusCol: 'D',
+      summaryStartRow: 4,
+      summaryEndRow: 15,
+      detailStartRow: 21,
+      detailEndRow: 140,
+      detailMonthCol: 'A',
+      detailNameCol: 'B',
+      detailEmployerCol: 'C', // 雇主提繳
+      detailPersonalCol: 'D'  // 個人自提
+    },
+    healthInsurance: {
+      sheetName: '健保',
+      summaryMonthCol: 'A',
+      summaryTotalCol: 'B',
+      summaryStatusCol: 'D',
+      summaryStartRow: 4,
+      summaryEndRow: 15,
+      detailStartRow: 21,
+      detailEndRow: 140,
+      detailMonthCol: 'A',
+      detailNameCol: 'B',
+      detailPersonalCol: 'C',
+      detailCompanyCol: 'D'
+    }
+  },
+
+  // 預設員工代號名冊
+  defaultEmployees: [
+    { code: 'E01', name: '吳金燕' },
+    { code: 'E02', name: '易金香' },
+    { code: 'E03', name: '古力予' },
+    { code: 'E04', name: '鄭百翔' },
+    { code: 'E05', name: '陳萱蘋' },
+    { code: 'E06', name: '歐明安' },
+    { code: 'E07', name: '林家羽' },
+    { code: 'E08', name: '員工08' },
+    { code: 'E09', name: '員工09' },
+    { code: 'E10', name: '員工10' },
+  ],
+
+  // 報表指紋關鍵字
+  fingerprints: {
+    laborInsurance: ['投保單位被保險人名冊', '勞保線上申辦', '保費年月'],
+    laborPension: ['勞工退休金計算名冊', '雇主提繳', '月提繳工資'],
+    healthInsurance: ['投保單位保費計算明細表', '保費開單年月', '追溯更正調整保險費']
+  }
+};
+
+// 讀取/儲存自訂設定 (LocalStorage)
+class ConfigManager {
+  static STORAGE_KEY = 'pdf2excel_hr_config_v1';
+
+  static getHRConfig() {
+    try {
+      const saved = localStorage.getItem(this.STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
       }
+    } catch (e) {
+      console.warn('載入自訂設定失敗，使用預設值', e);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_HR_CONFIG));
+  }
+
+  static saveHRConfig(config) {
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(config));
+      return true;
+    } catch (e) {
+      console.error('儲存設定失敗', e);
+      return false;
+    }
+  }
+
+  static resetHRConfig() {
+    try {
+      localStorage.removeItem(this.STORAGE_KEY);
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(DEFAULT_HR_CONFIG));
+  }
+}
+
+// 既有標準 PO 採購單設定 (保留相容性)
+const PDF_CONFIGS = {
+  "hr_cost": {
+    id: "hr_cost",
+    name: "人事成本計算 (勞保/勞退/健保整合)",
+    description: "支援每月多份 PDF 清冊整合寫入年度 cost.xlsx 管理表",
+    templateUrl: "./cost.xlsx",
+    isHRMode: true
+  },
+  "po_standard": {
+    id: "po_standard",
+    name: "標準採購單 (PO Demo)",
+    description: "單一採購單 PDF 轉 Excel 示範範本",
+    fingerprintKeywords: ["PURCHASE ORDER", "採購單號", "供應商代碼"],
+    templateUrl: "./templates/template_po.xlsx",
+    isHRMode: false,
+    fields: [
+      { key: "poNumber", label: "採購單號", type: "string", regex: /PO\s*(?:NO|編號)?[:：]?\s*([A-Z0-9-]+)/i, targetCell: "B3", required: true },
+      { key: "orderDate", label: "訂單日期", type: "date", regex: /(?:訂單日期|Order\s*Date)[:：]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})/i, targetCell: "B4", required: true },
+      { key: "vendorName", label: "供應商名稱", type: "string", regex: /(?:供應商|Vendor)[:：]?\s*([^\n\r,，]+)/i, targetCell: "B5", required: true },
+      { key: "totalAmount", label: "採購總金額", type: "number", regex: /(?:總計|Total\s*Amount)[:：]?\s*[$NT]*\s*([\d,]+(?:\.\d+)?)/i, targetCell: "E20", required: true }
     ]
   }
 };
+
+window.ConfigManager = ConfigManager;
+window.PDF_CONFIGS = PDF_CONFIGS;
+window.DEFAULT_HR_CONFIG = DEFAULT_HR_CONFIG;

@@ -2,3 +2,9 @@ node_modules/
 package-lock.json
 .DS_Store
 Thumbs.db
+
+# 測試與除錯暫存檔案
+scripts/*.xlsx
+scripts/*.zip
+scripts/*_zip/
+scripts/*.txt

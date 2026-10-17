@@ -3,22 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PDF to Excel 智慧轉換工具 | Client-Side 零後端安全解析</title>
+  <title>人事成本智慧計算系統 | PDF to Excel 安全轉換</title>
   
   <!-- Google 字體 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
   
   <!-- 主樣式表 -->
   <link rel="stylesheet" href="css/style.css">
 
   <!-- 第三方函式庫 CDN (純客戶端運作) -->
-  <!-- 1. Mozilla pdf.js (PDF 讀取與解碼) -->
+  <!-- 1. JSZip (ZIP 與 Office OpenXML 容器處理) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- 2. Mozilla pdf.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- 2. exceljs (Excel 範本載入與注入) -->
+  <!-- 3. ExcelJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-  <!-- 3. FileSaver.js (瀏覽器觸發檔案下載) -->
+  <!-- 4. FileSaver.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
@@ -30,19 +32,30 @@
     <header class="app-header">
       <div class="brand-badge">
         <span class="dot"></span>
-        <span>純瀏覽器客戶端解析 · 隱私零外洩</span>
+        <span>純瀏覽器客戶端解析 · 隱私零外洩 · 非破壞性公式保留</span>
       </div>
-      <h1 class="app-title">PDF to Excel 智慧表單轉換工具</h1>
-      <p class="app-subtitle">拖曳或選擇 PDF 檔案，前端引擎將自動識別特徵關鍵字、擷取關鍵資料，並精確填入排版完整的 Excel 範本中。</p>
+      <h1 class="app-title">人事成本智慧計算與報表整合系統</h1>
+      <p class="app-subtitle">上傳每月勞保、勞退、健保 PDF 清冊與年度 cost.xlsx，系統自動提取明細、眷屬歸戶、雙向勾稽，並安全累計寫入年度管理表中。</p>
+      
+      <!-- 工具設定快捷按鈕 -->
+      <div class="header-actions">
+        <button id="btnOpenSettings" class="btn btn-outline-sm" type="button" title="開啟欄位與工作表對應設定">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          彈性規則設定
+        </button>
+      </div>
     </header>
 
     <!-- 主工作區 -->
     <main class="workflow-grid">
-      <!-- 步驟 1: 上傳與選擇檔案區 -->
+      <!-- 步驟 1: 多檔案上傳與辨識區 -->
       <section class="card upload-section">
         <div id="dropzone" class="dropzone-container">
           <div class="dropzone-icon-wrap">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
               <line x1="12" y1="18" x2="12" y2="12"></line>
@@ -50,44 +63,41 @@
               <line x1="15" y1="15" x2="12" y2="12"></line>
             </svg>
           </div>
-          <h3 class="dropzone-title">拖曳 PDF 檔案至此處</h3>
-          <p class="dropzone-desc">支援標準商業採購單、報價單等電子 PDF 文件</p>
+          <h3 class="dropzone-title">拖曳 PDF 檔案或年度 EXCEL 表單至此處</h3>
+          <p class="dropzone-desc">可同時拖入多個檔案（勞保、勞退、健保 PDF 與年度 Excel），系統將自動識別並分類歸戶</p>
 
           <!-- 隱藏原生檔案輸入框 -->
-          <input type="file" id="fileInput" accept="application/pdf,.pdf" style="display: none;" />
+          <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" multiple style="display: none;" />
+          <input type="file" id="excelFileInput" accept=".xlsx" style="display: none;" />
 
           <div class="action-buttons-group">
-            <!-- 點擊彈出自選檔案按鈕 -->
-            <button id="btnBrowse" type="button" class="btn btn-primary" title="開啟檔案選取對話框">
+            <button id="btnBrowsePdf" type="button" class="btn btn-primary" title="開啟檔案選取對話框選擇多個 PDF">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
               </svg>
-              選擇 PDF 檔案
+              選擇 PDF 清冊 (可多選)
             </button>
 
-            <!-- 一鍵載入示範檔案按鈕 -->
-            <button id="btnLoadDemo" type="button" class="btn btn-secondary" title="立刻載入內建採購單驗證">
+            <button id="btnBrowseExcel" type="button" class="btn btn-outline" title="選擇現有的 EXCEL 表單進行追加更新">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
               </svg>
-              載入示範 Demo (標準採購單)
+              選取現有EXCEL表單
             </button>
           </div>
 
-          <!-- 已選檔案標籤 -->
-          <div id="fileBadge" class="file-badge" style="display: none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-              <polyline points="13 2 13 9 20 9"></polyline>
-            </svg>
-            <span id="fileName">未選擇檔案</span>
+          <!-- 已上傳檔案狀態徽章列表 -->
+          <div id="fileListContainer" class="file-badges-container" style="display: none;">
+            <!-- 由 JS 動態生成各檔案標籤 -->
           </div>
         </div>
       </section>
 
-      <!-- 步驟 2: 人機協同核對與預覽面板 (Human-in-the-Loop) -->
-      <section id="previewPanel" class="card preview-panel">
+      <!-- 步驟 2: 人事成本核對與整合面板 -->
+      <section id="previewPanel" class="card preview-panel" style="display: none;">
         <div class="panel-header">
           <div class="panel-title-area">
             <h2>
@@ -95,47 +105,160 @@
                 <path d="M9 11l3 3L22 4"></path>
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
               </svg>
-              資料擷取核對與手動覆寫
+              人事保費勾稽核對與員工明細預覽
             </h2>
-            <p>請檢視系統解析出的欄位數值，點選文字框可直接手動修正，確認無誤後即可匯出。</p>
+            <p>系統已自動完成眷屬歸戶與金額彙整。請檢視下方勾稽狀態與員工各項負擔，支援點擊直接手動微調數值。</p>
           </div>
 
-          <!-- 表單格式下拉選單（防呆切換） -->
-          <div class="template-selector-wrap">
-            <label for="configSelect">表單類型：</label>
-            <select id="configSelect" class="select-input">
-              <!-- 由 js/app.js 動態填充 -->
+          <!-- 年月份選擇器 -->
+          <div class="month-selector-wrap">
+            <label for="monthSelect">目標寫入月份：</label>
+            <select id="monthSelect" class="select-input">
+              <option value="2026-01-01">2026 年 01 月 (115/01)</option>
+              <option value="2026-02-01">2026 年 02 月 (115/02)</option>
+              <option value="2026-03-01">2026 年 03 月 (115/03)</option>
+              <option value="2026-04-01">2026 年 04 月 (115/04)</option>
+              <option value="2026-05-01">2026 年 05 月 (115/05)</option>
+              <option value="2026-06-01">2026 年 06 月 (115/06)</option>
+              <option value="2026-07-01">2026 年 07 月 (115/07)</option>
+              <option value="2026-08-01" selected>2026 年 08 月 (115/08)</option>
+              <option value="2026-09-01">2026 年 09 月 (115/09)</option>
+              <option value="2026-10-01">2026 年 10 月 (115/10)</option>
+              <option value="2026-11-01">2026 年 11 月 (115/11)</option>
+              <option value="2026-12-01">2026 年 12 月 (115/12)</option>
             </select>
           </div>
         </div>
 
-        <!-- 欄位動態網格清單 -->
-        <div id="fieldsContainer" class="fields-grid">
-          <!-- 由 js/app.js 依抽取結果動態產生卡片 -->
+        <!-- 官方繳款總額勾稽卡片 -->
+        <div id="auditCardsContainer" class="audit-cards-grid">
+          <div class="audit-card" id="cardLabor">
+            <div class="audit-card-title">勞保公司負擔</div>
+            <div class="audit-card-value" id="laborCompanyTotal">$0</div>
+            <div class="audit-card-sub" id="laborPersonalTotal">個人負擔加總: $0</div>
+            <span class="audit-tag tag-ok">名冊解析完成</span>
+          </div>
+          <div class="audit-card" id="cardPension">
+            <div class="audit-card-title">勞退雇主提繳</div>
+            <div class="audit-card-value" id="pensionEmployerTotal">$0</div>
+            <div class="audit-card-sub" id="pensionExpectedTotal">官方應繳總額: $0</div>
+            <span class="audit-tag tag-ok" id="pensionAuditTag">勾稽核對中</span>
+          </div>
+          <div class="audit-card" id="cardHealth">
+            <div class="audit-card-title">健保總額 (含眷屬)</div>
+            <div class="audit-card-value" id="healthGrandTotal">$0</div>
+            <div class="audit-card-sub" id="healthExpectedTotal">官方應繳總額: $0</div>
+            <span class="audit-tag tag-ok" id="healthAuditTag">勾稽核對中</span>
+          </div>
+        </div>
+
+        <!-- 員工明細對照核對表格 -->
+        <div class="table-container">
+          <table class="data-table" id="employeeDataTable">
+            <thead>
+              <tr>
+                <th style="width: 100px;">員工姓名</th>
+                <th style="width: 130px;">對照代號</th>
+                <th>健保個人</th>
+                <th>健保公司</th>
+                <th>勞保個人</th>
+                <th>勞保公司</th>
+                <th>勞退雇主</th>
+                <th>眷屬備註</th>
+                <th style="min-width: 95px; width: 95px; text-align: center;">狀態</th>
+              </tr>
+            </thead>
+            <tbody id="employeeTableBody">
+              <!-- JS 動態生成 -->
+            </tbody>
+          </table>
         </div>
 
         <!-- 底部確認匯出動作列 -->
         <div class="panel-footer">
           <div id="templateInfo" class="template-info-badge">
-            目前套用範本：標準採購單 (PO)
+            <span class="pulse-indicator"></span>
+            使用範本：cost.xlsx (預設內建範本)
           </div>
 
           <div style="display: flex; gap: 12px; align-items: center;">
-            <button id="btnReset" type="button" class="btn btn-secondary">
-              重設 / 換一個檔案
+            <button id="btnDownloadTemplate" type="button" class="btn btn-outline" title="下載未修改的空白年度 cost.xlsx 範本">
+              下載空白範本
             </button>
-            <button id="btnExportExcel" type="button" class="btn btn-success">
+            <button id="btnReset" type="button" class="btn btn-secondary">
+              重設清空
+            </button>
+            <button id="btnExportCostExcel" type="button" class="btn btn-success">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              確認無誤，產出並下載 Excel
+              確認無誤，寫入並下載 EXCEL
             </button>
           </div>
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- 彈性設定 Modal 對話框 -->
+  <div id="settingsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          彈性欄位與工作表映射設定
+        </h3>
+        <button id="btnCloseSettings" class="btn-close" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">若未來政府 PDF 格式或公司 cost.xlsx 欄位有所異動，可在此調整工作表名稱與欄位代號，系統將儲存於您的瀏覽器中。</p>
+        
+        <div class="settings-section">
+          <h4>工作表名稱設定</h4>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>健保工作表名</label>
+              <input type="text" id="cfgHealthSheet" class="form-control" value="健保" />
+            </div>
+            <div class="form-group">
+              <label>勞保工作表名</label>
+              <input type="text" id="cfgLaborSheet" class="form-control" value="勞保" />
+            </div>
+            <div class="form-group">
+              <label>勞退工作表名</label>
+              <input type="text" id="cfgPensionSheet" class="form-control" value="勞退" />
+            </div>
+            <div class="form-group">
+              <label>員工設定工作表名</label>
+              <input type="text" id="cfgEmpSheet" class="form-control" value="員工設定" />
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>明細起始列設定</h4>
+          <div class="settings-grid">
+            <div class="form-group">
+              <label>每月明細起始列 (預設 21)</label>
+              <input type="number" id="cfgDetailStartRow" class="form-control" value="21" />
+            </div>
+            <div class="form-group">
+              <label>每月明細結束列 (預設 140)</label>
+              <input type="number" id="cfgDetailEndRow" class="form-control" value="140" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnResetSettings" class="btn btn-secondary" type="button">恢復預設值</button>
+        <button id="btnSaveSettings" class="btn btn-primary" type="button">儲存設定</button>
+      </div>
+    </div>
   </div>
 
   <!-- 提示訊息容器 (Toast) -->

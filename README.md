@@ -1,145 +1,109 @@
-# 📄 PDF to Excel 智慧表單轉換工具 (Client-Side Only)
+# 🏢 人事成本智慧計算與報表整合系統 (HR Cost Calculator)
 
-> **零後端伺服器依賴 · 純瀏覽器客戶端運作 · 保障企業隱私安全 · 支援 GitHub Pages 靜態託管**
+> **純瀏覽器客戶端解析 · 隱私零外洩 · 勞健保/勞退 PDF 自動對帳 · 非破壞性 Excel 公式保留**
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Web%20Browser-success.svg)
+![Platform](https://img.shields.io/badge/platform-Web%20Browser-blue.svg)
 ![Security](https://img.shields.io/badge/security-100%25%20Client--Side-brightgreen.svg)
+![Office](https://img.shields.io/badge/Excel-Formula%20Preserved%20(OpenXML)-success.svg)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
 ---
 
-## 🌟 專案亮點
+## 🌟 專案簡介
 
-- 🔒 **資料安全與隱私第一**：所有 PDF 讀取、文字擷取、Excel 產生均在**使用者本機瀏覽器記憶體中**完成，不會上傳至任何後端伺服器或第三方雲端服務。
-- 🖥️ **跨平台無痛使用**：擺脫 Python、依賴套件（如 poppler 等）繁瑣的安裝步驟，任何裝置（Windows、macOS、Linux、平板）只要有現代瀏覽器（Chrome, Edge, Safari, Firefox）即可直接開啟使用。
-- 🎯 **指紋特徵自動辨識 (Schema-Driven)**：上傳 PDF 後，前端引擎自動掃描文件指紋關鍵字（如「採購單號」、「PURCHASE ORDER」），智能匹配對應的表單格式。
-- ✍️ **人機協同核對 (Human-in-the-Loop)**：解析完成後提供直觀的預覽核對面板，支援直接點擊欄位手動修改覆寫，並對必填欄位提供狀態標示（綠色正常 / 紅色未填）。
-- 📊 **精準格式保留**：直接讀取現有排版好的 `.xlsx` 範本，僅填寫指定儲存格（Cell），完整保留原本的公式、樣式、框線與企業 Logo。
+每月人資與會計在結算公司人事成本時，需要手動對照勞保局與健保署寄發的各項費用明細（PDF 清冊），並逐筆將員工的個人自付額、公司負擔額及勞退提繳額手動鍵入年度管理表（如 `cost.xlsx`）中，過程繁瑣且極易出錯。
+
+**本系統為專為企業打造的「人事成本智慧計算與整合工具」**。使用者僅需每月一次將 3~4 個 PDF 清冊及當年度的 Excel 管理表拉入網頁，系統便會自動完成文字提取、年月識別、眷屬歸戶、雙向核算，並以**原位 XML 注入技術**安全寫入目標月份儲存格，產出格式與公式完美保留的更新報表！
 
 ---
 
-## 🚀 快速上手 (使用說明)
+## 🚀 核心亮點
 
-### 方式 A：直接在 GitHub Pages 線上使用 (最推薦)
-1. 開啟託管於 GitHub Pages 的專案網址（或您部署的靜態站點）。
-2. 開始使用！無需安裝任何軟體。
+### 1. 🔒 100% 純瀏覽器端運作（企業級隱私保護）
+- 所有 PDF 解碼、文字識別與 Excel 產生，**完全在使用者本機瀏覽器的記憶體中運作**。
+- **無任何後端伺服器、無任何 API 上傳**，徹底杜絕員工身分證字號、投保薪資等敏感機密資料外洩風險。
 
-### 方式 B：本機端離線使用
-由於瀏覽器對於讀取本地範本（`fetch('./templates/...')`）有同源政策限制（CORS），建議透過簡單的本機 HTTP 伺服器開啟：
+### 2. 🛡️ 原位 XML 安全注入技術（100% 保留 Excel 公式）
+- 傳統 JS 試算表函式庫在重新儲存含複雜跨表公式（如 `SUMIFS`、`='員工設定'!$B$4`）的檔案時，極易因單引號轉義或缺少命名空間導致 Excel 報「檔案損毀」。
+- 本專案採用 **JSZip 底層 OpenXML 精準替換技術**，只修改目標月份與儲存格數值，各員工分頁（員工01~10）的連動計算公式、字型顏色、框線 100% 原汁原味保留！
 
+### 3. 👨‍👩‍👧 健保眷屬智慧自動歸戶
+- 自動區分「主被保險人」與「眷屬」，並將依附眷屬之健保自付額**自動累計合併至主員工名下**，公司負擔亦自動精準歸屬。
+
+### 4. ⚖️ 官方清冊雙向自動勾稽對帳
+- 解析員工明細的同時，自動抓取官方 PDF 上的「應繳總額」或「提繳合計」，並與明細計算總合進行雙向即時對帳。
+- 介面提供狀態指示標籤（綠色「已核對」 / 紅色「差異提示」），提供最安心的核對防線。
+
+### 5. 📂 支援任意中英文檔名的年度表單
+- 不強制綁定固定檔名，可自由拖曳或選取既有的年度管理 Excel（如 `2026人事成本.xlsx`、`cost.xlsx`），匯出時系統會智慧沿用自訂檔名前綴。
+
+### 6. ⚙️ 彈性規則設定
+- 支援透過介面自訂「健保」、「勞保」、「勞退」、「員工設定」之工作表名稱，以及每月明細的起始與結束列，輕鬆適應未來的表單異動。
+
+---
+
+## 📖 操作流程指南
+
+```
+[拖入 3~4 個 PDF 清冊 + 當年度 Excel]
+       ↓
+[純客戶端自動解析：抓取年月、歸戶眷屬、計算各項保費]
+       ↓
+[人機協同核對面板：雙向勾稽總額確認、可直接手動微調]
+       ↓
+[確認無誤，一鍵寫入並下載更新後的 Excel 表單]
+```
+
+### 支援的輸入檔案：
+1. **公司勞保繳費明細 PDF**（例如：`cost_公司勞保明細11508.pdf`）
+2. **公司勞退雇主提繳明細 PDF**（例如：`cost_公司勞退雇主提繳明細11508.pdf`）
+3. **機構健保繳費明細 PDF**（例如：`cost_機構健保明細11508.pdf`）
+4. **當年度人事成本 Excel**（例如：`cost.xlsx` 或任意命名的年度表單）
+
+---
+
+## 💻 本機使用與測試說明
+
+### 方式 A：免安裝工具，直接雙擊開啟（最快速）
+1. 直接用滑鼠雙擊專案目錄下的 `index.html`（於 Chrome 或 Edge 開啟）。
+2. 將 `samples/` 中的 PDF 清冊與目錄下的 `cost.xlsx` **一併拖入網頁中**。
+3. 系統即刻呈現勾稽結果，點擊「確認無誤，寫入並下載 EXCEL」即可獲得更新後的檔案！
+> 💡 *小提醒：因現代瀏覽器安全限制（CORS），若直接以 `file://` 開啟且未放入 Excel，瀏覽器將限制自動載入預設範本，因此請記得將 Excel 與 PDF 一起拖入。*
+
+### 方式 B：透過本地伺服器開啟（推薦）
+若透過本機 HTTP 伺服器開啟，連 Excel 都無需手動選取，系統會自動預載同目錄下的 `cost.xlsx`：
 ```bash
-# 1. 複製專案庫
-git clone https://github.com/your-username/PDFtoEXCEL.git
-cd PDFtoEXCEL
-
-# 2. 啟動本機靜態伺服器 (以下任選一種方式)
 # 使用 Node.js：
 npx serve -l 3000
 
 # 或使用 Python 3：
 python -m http.server 3000
 
-# 或在 VS Code 安裝擴充套件「Live Server」並點擊右下角「Go Live」
+# 或在 VS Code 中右鍵 index.html 點選「Open with Live Server」
 ```
-
-接著在瀏覽器造訪 `http://localhost:3000` 即可。
+瀏覽器造訪 `http://localhost:3000` 即可使用。
 
 ---
 
-## 📖 操作步驟流程
-
-```
-[選擇或拖曳 PDF] ➔ [自動辨識與正則擷取] ➔ [核對預覽 / 手動修正] ➔ [下載填妥的 Excel]
-```
-
-1. **上傳檔案**：
-   * **拖曳方式**：直接將 PDF 檔案拖曳進虛線框中。
-   * **按鈕選取**：點擊 **「選擇 PDF 檔案」** 按鈕，彈出自選資料夾對話框選取檔案。
-   * **快速體驗**：初次使用可點擊 **「載入示範 Demo (標準採購單)」** 按鈕快速體驗。
-2. **資料核對與手動覆寫**：
-   * 系統將展示「資料擷取核對與手動覆寫」面板。
-   * 檢視自動擷取的各欄位（如採購單號、日期、金額等）。
-   * 若有辨識漏抓或數值需調整，可**直接在輸入框內編輯修改**。
-   * 如有需要，亦可手動透過下拉選單切換套用的表單格式。
-3. **產出並下載**：
-   * 點擊 **「確認無誤，產出並下載 Excel」** 按鈕。
-   * 系統將自動把數值填入對應的 Excel 範本，並於瀏覽器立即觸發下載 `.xlsx` 檔案！
-
----
-
-## 🛠️ 如何擴充新的表單格式？
-
-本專案採用**設定檔驅動（Schema-Driven）**架構，若未來想新增「報價單」、「請款發票」等新表單，**完全不需要修改核心解析邏輯**，僅需兩步：
-
-### 步驟 1：放入您的空白 Excel 範本
-將您設計好的 Excel 空白範本放入 `templates/` 目錄，例如 `templates/template_quotation.xlsx`。
-
-### 步驟 2：在 `js/config.js` 中新增規則
-打開 `js/config.js`，在 `PDF_CONFIGS` 物件中新增一組表單配置：
-
-```javascript
-"quotation_general": {
-  id: "quotation_general",
-  name: "業務報價單 (Quotation)",
-  description: "適用於常規業務報價單",
-  // 1. 自動辨識指紋（命中關鍵字即自動匹配此格式）
-  fingerprintKeywords: ["QUOTATION", "估價單", "報價單號"],
-  // 2. 對應的空白 Excel 範本路徑
-  templateUrl: "./templates/template_quotation.xlsx",
-  // 3. 預設匯出檔名規則
-  outputFilenamePattern: "報價單_{quoteNo}.xlsx",
-  // 4. 各欄位抓取規則與目標儲存格映射
-  fields: [
-    {
-      key: "quoteNo",
-      label: "報價單號",
-      type: "string",
-      regex: /(?:報價單號|Quote\s*No)[:：\s]*([A-Za-z0-9-]+)/i,
-      targetCell: "C2", // 寫入 Excel 的儲存格座標
-      required: true
-    },
-    {
-      key: "clientName",
-      label: "客戶名稱",
-      type: "string",
-      regex: /(?:客戶名稱|Client)[:：\s]*([\u4e00-\u9fa5A-Za-z\s]+)/,
-      targetCell: "C3",
-      required: false
-    },
-    {
-      key: "totalAmount",
-      label: "總計金額",
-      type: "number",
-      regex: /(?:總計|TOTAL)[:：\s]*[$NT¥\s]*([0-9,]+(?:\.[0-9]{1,2})?)/i,
-      targetCell: "F18",
-      required: true
-    }
-  ]
-}
-```
-
-存檔後重新整理網頁，系統就會具備該表單的自動辨識與填入功能！
-
----
-
-## 📁 專案目錄結構
+## 📁 專案架構
 
 ```text
 PDFtoEXCEL/
-├── index.html                   # 應用主介面（拖曳區、核對面板、操作按鈕）
-├── README.md                    # 專案說明與操作文件 (本文件)
-├── MVP.md                       # 專案架構規格書
+├── index.html                   # 主應用介面（拖曳區、勾稽儀表板、明細核對、設定視窗）
+├── README.md                    # 專案詳細說明與操作手冊
+├── APP.md                       # 系統架構規格書與業務邏輯定義
+├── cost.xlsx                    # 年度人事成本 Excel 標準範本
 ├── css/
-│   └── style.css                # 介面樣式（深邃磨砂玻璃擬態風格、微動畫、狀態燈）
+│   └── style.css                # 介面樣式（高質感深色玻璃擬態、狀態燈、響應式佈局）
 ├── js/
-│   ├── app.js                   # UI 互動控制、人機協同核對邏輯
-│   ├── config.js                # 表單指紋辨識與儲存格映射規則設定檔
-│   ├── pdf-parser.js            # pdf.js 解析與文字串流擷取模組
-│   └── excel-writer.js          # exceljs 範本載入、數值填入與下載模組
-├── templates/
-│   └── template_po.xlsx         # 標準採購單 Excel 範本檔
-└── samples/
-    └── sample_po.pdf            # 供測試驗證的示範採購單 PDF 檔
+│   ├── app.js                   # 介面流程控制、檔案狀態管理、事件綁定
+│   ├── config.js                # 人事成本欄位對照、工作表名稱與預設規則設定檔
+│   ├── pdf-parser.js            # 勞健保/勞退 PDF 專用文字座標流解析器
+│   └── excel-writer.js          # JSZip 底層 OpenXML 原位注入與安全下載模組
+└── samples/                     # 供驗證測試的示範 PDF 清冊檔案
+    ├── cost_公司勞保明細11508.pdf
+    ├── cost_公司勞退雇主提繳明細11508.pdf
+    └── cost_機構健保明細11508.pdf
 ```
 
 ---
@@ -147,9 +111,9 @@ PDFtoEXCEL/
 ## 🧰 技術棧 (Tech Stack)
 
 * **PDF 解析引擎**：[Mozilla pdf.js](https://mozilla.github.io/pdf.js/)（純前端解碼 PDF）
-* **Excel 引擎**：[exceljs](https://github.com/exceljs/exceljs)（保留公式、格式注入資料）
-* **檔案下載**：[FileSaver.js](https://github.com/eligrey/FileSaver.js/)
-* **前端介面**：原生 HTML5 + Vanilla CSS3 (Glassmorphism) + ES6+ JavaScript（零肥大打包依賴，極速載入）
+* **XML 容器與封裝**：[JSZip](https://stuk.github.io/jszip/)（原位 OpenXML 操作，保護公式與格式）
+* **檔案儲存觸發**：[FileSaver.js](https://github.com/eligrey/FileSaver.js/)
+* **前端架構**：Vanilla HTML5 / Modern CSS3 (Glassmorphism & Flexbox/Grid) / ES6+ JavaScript（零打包工具，開啟即用）
 
 ---
 
