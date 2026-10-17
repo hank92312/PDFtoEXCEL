@@ -2,10 +2,11 @@
 
 > **純瀏覽器客戶端解析 · 隱私零外洩 · 勞健保/勞退 PDF 自動對帳 · 非破壞性 Excel 公式保留**
 
-![Platform](https://img.shields.io/badge/platform-Web%20Browser-blue.svg)
-![Security](https://img.shields.io/badge/security-100%25%20Client--Side-brightgreen.svg)
-![Office](https://img.shields.io/badge/Excel-Formula%20Preserved%20(OpenXML)-success.svg)
-![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
+[![線上立即試用](https://img.shields.io/badge/DEMO-線上立即試用-00c853?style=for-the-badge&logo=googlechrome&logoColor=white)](https://hank92312.github.io/PDFtoEXCEL/)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/hank92312/PDFtoEXCEL)
+
+> 🔗 **線上即開即用網址**：[https://hank92312.github.io/PDFtoEXCEL/](https://hank92312.github.io/PDFtoEXCEL/)  
+> 💡 *零後端依賴、免安裝任何軟體或 Python 環境，點擊網址即可在任何電腦、平板與手機瀏覽器上體驗！*
 
 ---
 
