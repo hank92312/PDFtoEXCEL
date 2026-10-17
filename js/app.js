@@ -448,8 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 健保
     if (health) {
-      dom.healthGrandTotal.textContent = `$${health.actualTotal.toLocaleString()}`;
-      dom.healthExpectedTotal.textContent = `官方應繳總額: $${health.expectedTotal.toLocaleString()} (單位: $${health.totalCompany.toLocaleString()})`;
+      dom.healthGrandTotal.textContent = `$${health.totalCompany.toLocaleString()}`;
+      dom.healthExpectedTotal.textContent = `個人負擔加總: $${health.totalPersonal.toLocaleString()} | 官方應繳總額: $${health.expectedTotal.toLocaleString()}`;
       if (health.isBalanced) {
         dom.healthAuditTag.className = 'audit-tag tag-ok';
         dom.healthAuditTag.textContent = '✅ 勾稽一致';
@@ -589,6 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
             records: pensionRecords
           },
           healthData: {
+            totalCompany: healthRecords.reduce((s, r) => s + r.company, 0),
             expectedTotal: healthRecords.reduce((s, r) => s + r.personal + r.company, 0),
             records: healthRecords
           },

@@ -201,8 +201,8 @@ class ExcelWriter {
     const healthSheetPath = sheetPathMap.get(healthSheetName) || 'xl/worksheets/sheet3.xml';
     if (zip.file(healthSheetPath) && healthData) {
       let healthXml = await zip.file(healthSheetPath).async('text');
-      // 摘要
-      healthXml = this.setNumericCell(healthXml, `B${summaryRow}`, healthData.expectedTotal || 0);
+      // 摘要：寫入公司實際支付健保費總額 (投保單位負擔)，避免計入員工個人自付額導致人事成本失真
+      healthXml = this.setNumericCell(healthXml, `B${summaryRow}`, healthData.totalCompany || 0);
       healthXml = this.setTextCell(healthXml, `D${summaryRow}`, '已核對');
       // 明細 10 人 (C:個人負擔, D:公司負擔)
       employeeMappings.forEach((emp, idx) => {

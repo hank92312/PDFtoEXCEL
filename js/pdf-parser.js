@@ -261,6 +261,18 @@ class PdfParser {
       expectedTotal = parseInt(totalMatch[1].replace(/,/g, ''), 10);
     }
 
+    let officialCompanyBurden = 0;
+    const compMatch = fullText.match(/投保單位負擔[：:\s]*([\d,]+)\s*元?/);
+    if (compMatch) {
+      officialCompanyBurden = parseInt(compMatch[1].replace(/,/g, ''), 10);
+    }
+
+    let officialPersonalBurden = 0;
+    const selfMatch = fullText.match(/被保險人自付[：:\s]*([\d,]+)\s*元?/);
+    if (selfMatch) {
+      officialPersonalBurden = parseInt(selfMatch[1].replace(/,/g, ''), 10);
+    }
+
     const employees = [];
     let currentEmp = null;
 
@@ -324,10 +336,12 @@ class PdfParser {
       yearMonth,
       rocYearMonth: rocYear && month ? `${rocYear}年${month}月` : '',
       expectedTotal,
+      officialCompanyBurden,
+      officialPersonalBurden,
       totalCompany,
       totalPersonal,
       actualTotal,
-      isBalanced: expectedTotal === actualTotal,
+      isBalanced: expectedTotal === actualTotal && (officialCompanyBurden === 0 || officialCompanyBurden === totalCompany),
       records: employees
     };
   }
