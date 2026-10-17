@@ -1,5 +1,6 @@
 /**
  * app.js - 人事成本智慧計算與轉換工具主控制器
+ * 支援 20 人空間、多月份批次處理、員工分頁動態更名、全員工彙總自動連動與舊名冊保留機制
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -9,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadedPdfFiles: [], // Array<{ name: string, arrayBuffer: ArrayBuffer }>
     customCostExcelBuffer: null, // ArrayBuffer or null
     customCostExcelName: null,
+    existingEmployeesPool: null, // 從 Excel 讀取到的既有名冊池 (20人)
+    activeEmployeePool: [], // 當前動態合併後的名冊池 (20人)
     parseResults: null,
     detectedMonths: [], // 所有解析出的月份清單，例如 ['2026-08-01', '2026-09-01']
     monthlyData: {}, // key 為 ym，值為 { mergedEmployees, laborInsurance, laborPension, healthInsurance }
@@ -115,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
       a.href = './cost.xlsx';
       a.download = 'cost_範本.xlsx';
       a.click();
-      showToast('開始下載空白年度 cost.xlsx 範本', 'success');
+      showToast('開始下載 20 人容量與全員工彙總 cost.xlsx 範本', 'success');
     });
 
     // 匯出人事成本 Excel
@@ -152,30 +155,39 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 載入並驗證 Excel 檔案
+   * 載入並驗證 Excel 檔案 (同時提取既有員工名冊以維持累加池)
    */
   async function loadExcelFile(file) {
     try {
       const buffer = await file.arrayBuffer();
-      // 驗證是否為可解析的 Excel 檔案
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
+      const zip = await ExcelWriter.loadZip(buffer);
+      const sheetPathMap = await ExcelWriter.getSheetPathMap(zip);
       
-      const sheetNames = wb.worksheets.map(w => w.name);
-      const hasRequiredSheet = sheetNames.some(name => 
+      const hasRequiredSheet = Array.from(sheetPathMap.keys()).some(name => 
         name.includes('健保') || name.includes('勞保') || name.includes('勞退') || name.includes('員工')
       );
 
       state.customCostExcelBuffer = buffer;
       state.customCostExcelName = file.name;
+
+      // 提取該 Excel 內目前登記的員工名單 (保留歷史舊員工)
+      const existingEmployees = await ExcelWriter.readEmployeesFromExcel(zip, state.hrConfig);
+      state.existingEmployeesPool = existingEmployees;
+
+      const realCount = existingEmployees.filter(e => e.isReal).length;
       updateFileBadgesUI();
 
       if (hasRequiredSheet) {
-        dom.templateInfo.innerHTML = `<span class="pulse-indicator"></span> 使用範本：${file.name} (自訂年度表)`;
-        showToast(`已成功載入年度報表：${file.name}`, 'success');
+        dom.templateInfo.innerHTML = `<span class="pulse-indicator"></span> 使用範本：${file.name} (已讀取 ${realCount} 位既有員工)`;
+        showToast(`已成功載入年度報表：${file.name} (含 ${realCount} 位歷史員工)`, 'success');
       } else {
         dom.templateInfo.innerHTML = `<span class="pulse-indicator" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b;"></span> 使用範本：${file.name} (未偵測到標準工作表名)`;
         showToast(`⚠️ 已載入 ${file.name}，但請確認是否包含「健保/勞保/勞退」工作表`, 'warn');
+      }
+
+      // 若先前已上傳 PDF，立即重新運算管線以融合新舊名冊
+      if (state.uploadedPdfFiles.length > 0) {
+        await runParsingPipeline();
       }
     } catch (err) {
       console.error('Excel 載入失敗:', err);
@@ -266,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (type === 'excel') {
             state.customCostExcelBuffer = null;
             state.customCostExcelName = null;
+            state.existingEmployeesPool = null;
             dom.templateInfo.innerHTML = '<span class="pulse-indicator"></span> 使用範本：cost.xlsx (預設內建範本)';
             showToast('已取消選取自訂 Excel 表單，切換回預設範本', 'info');
           } else if (type === 'pdf') {
@@ -278,7 +291,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await runParsingPipeline();
           } else {
             state.parseResults = null;
-            state.mergedEmployees = [];
             dom.previewPanel.style.display = 'none';
           }
         });
@@ -289,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 執行 PDF 解析管線 (支援多月份批次聚合)
+   * 執行 PDF 解析管線 (支援多月份批次聚合與 20 人名冊累加池)
    */
   async function runParsingPipeline() {
     showToast('正在解析 PDF 清冊內容、保費年月與眷屬關係...', 'info');
@@ -300,10 +312,61 @@ document.addEventListener('DOMContentLoaded', () => {
       state.detectedMonths = results.detectedMonths || [];
       state.monthlyData = {};
 
-      // 針對每個偵測到的月份分別彙整員工名冊
+      // 1. 初始化 20 人名冊池 (若有既有 Excel 則繼承，否則使用預設)
+      let pool = [];
+      if (state.existingEmployeesPool && state.existingEmployeesPool.length === 20) {
+        pool = state.existingEmployeesPool.map(e => ({ ...e }));
+      } else {
+        for (let i = 1; i <= 20; i++) {
+          const code = `E${String(i).padStart(2, '0')}`;
+          pool.push({
+            code,
+            name: `員工${String(i).padStart(2, '0')}`,
+            isReal: false
+          });
+        }
+      }
+
+      // 2. 收集所有月份在 PDF 出現的員工姓名 (依出現順序保持穩定)
+      const pdfEmployeeNames = [];
       state.detectedMonths.forEach(ym => {
         const mObj = results.byMonth[ym];
-        const merged = mergeEmployeeDataForMonth(mObj);
+        ['laborInsurance', 'laborPension', 'healthInsurance'].forEach(kind => {
+          if (mObj[kind] && mObj[kind].records) {
+            mObj[kind].records.forEach(r => {
+              if (r.name && !pdfEmployeeNames.includes(r.name)) {
+                pdfEmployeeNames.push(r.name);
+              }
+            });
+          }
+        });
+      });
+
+      // 3. 智慧合併入名冊池 (已存在者固定其 code，新員工依序指派給尚未被佔用的位置)
+      pdfEmployeeNames.forEach(name => {
+        const alreadyReal = pool.find(p => p.name === name && p.isReal);
+        if (!alreadyReal) {
+          const emptySlot = pool.find(p => !p.isReal);
+          if (emptySlot) {
+            emptySlot.name = name;
+            emptySlot.isReal = true;
+          } else {
+            console.warn(`超過 20 人上限，無法指派新員工: ${name}`);
+          }
+        }
+      });
+
+      state.activeEmployeePool = pool;
+      // 同步至 hrConfig.defaultEmployees 供選單使用
+      state.hrConfig.defaultEmployees = pool.map(p => ({
+        code: p.code,
+        name: p.name
+      }));
+
+      // 4. 針對每個偵測到的月份分別彙整員工名冊
+      state.detectedMonths.forEach(ym => {
+        const mObj = results.byMonth[ym];
+        const merged = mergeEmployeeDataForMonth(mObj, state.activeEmployeePool);
         state.monthlyData[ym] = {
           yearMonth: ym,
           label: mObj.label,
@@ -331,10 +394,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       dom.previewPanel.style.display = 'block';
 
+      const realCount = pool.filter(p => p.isReal).length;
       if (state.detectedMonths.length > 1) {
-        showToast(`🎉 成功識別 ${state.detectedMonths.length} 個月份共 ${state.uploadedPdfFiles.length} 份檔案！請切換月份核對`, 'success');
+        showToast(`🎉 成功識別 ${state.detectedMonths.length} 個月份！名冊池已彙整 ${realCount} 位員工`, 'success');
       } else {
-        showToast('PDF 清冊解析完成！請核對下方勾稽與名冊', 'success');
+        showToast(`PDF 清冊解析完成！名冊池已彙整 ${realCount} 位員工，請核對下方資料`, 'success');
       }
     } catch (err) {
       console.error('解析失敗:', err);
@@ -353,9 +417,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 針對單一月份整合多份報表的員工明細
+   * 針對單一月份整合多份報表的員工明細 (依據名冊池精準綁定代號)
    */
-  function mergeEmployeeDataForMonth(monthObj) {
+  function mergeEmployeeDataForMonth(monthObj, pool = []) {
     const { laborInsurance, laborPension, healthInsurance } = monthObj;
     const empMap = new Map();
 
@@ -397,12 +461,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // 對照預設代號 E01~E10
+    // 依據動態名冊池精準綁定代號 (E01~E20)
     const merged = Array.from(empMap.values());
     merged.forEach((emp, idx) => {
-      const foundDefault = state.hrConfig.defaultEmployees.find(d => d.name === emp.name);
-      if (foundDefault) {
-        emp.code = foundDefault.code;
+      const foundInPool = pool.find(p => p.name === emp.name);
+      if (foundInPool) {
+        emp.code = foundInPool.code;
       } else {
         emp.code = `E${String(idx + 1).padStart(2, '0')}`;
       }
@@ -446,7 +510,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.pensionAuditTag.textContent = '未上傳';
     }
 
-    // 健保
+    // 健保 (顯示投保單位負擔與自付加總)
     if (health) {
       dom.healthGrandTotal.textContent = `$${health.totalCompany.toLocaleString()}`;
       dom.healthExpectedTotal.textContent = `個人負擔加總: $${health.totalPersonal.toLocaleString()} | 官方應繳總額: $${health.expectedTotal.toLocaleString()}`;
@@ -465,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 渲染指定月份的員工明細表格
+   * 渲染指定月份的員工明細表格 (支援 20 位員工代號與姓名動態對照)
    */
   function renderEmployeeTableForMonth(ym) {
     dom.employeeTableBody.innerHTML = '';
@@ -516,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 寫入並匯出 cost.xlsx (支援多月份批次一次性注入)
+   * 寫入並匯出 cost.xlsx (支援 20 人空間、工作表更名、全員工彙總自動連動與舊名冊保留)
    */
   async function exportCostExcel() {
     if (!state.parseResults) {
@@ -543,19 +607,15 @@ document.addEventListener('DOMContentLoaded', () => {
         throw loadErr;
       }
 
+      // 準備完整的 20 人名冊對照 (若某員未自訂，使用預設代號)
+      const empMappings = (state.activeEmployeePool && state.activeEmployeePool.length === 20)
+        ? state.activeEmployeePool.map(p => ({ code: p.code, name: p.name }))
+        : state.hrConfig.defaultEmployees.map(d => ({ code: d.code, name: d.name }));
+
       // 依序寫入所有偵測到的月份
       for (const ym of monthsToExport) {
         const mData = state.monthlyData[ym];
         if (!mData || !mData.mergedEmployees) continue;
-
-        // 準備員工名冊對照 (依照 E01~E10 排序)
-        const empMappings = state.hrConfig.defaultEmployees.map(d => {
-          const found = mData.mergedEmployees.find(m => m.code === d.code);
-          return {
-            code: d.code,
-            name: found ? found.name : d.name
-          };
-        });
 
         // 整理各項險種寫入紀錄
         const laborRecords = mData.mergedEmployees.map(e => ({
@@ -576,7 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
           company: e.healthCompany || 0
         }));
 
-        // 執行該月份的原位安全注入
+        // 執行該月份的原位安全注入 (含 20 人明細與投保單位負擔摘要)
         await ExcelWriter.updateCostWorkbook(zip, {
           targetMonth: ym,
           employeeMappings: empMappings,
@@ -589,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
             records: pensionRecords
           },
           healthData: {
-            totalCompany: healthRecords.reduce((s, r) => s + r.company, 0),
+            totalCompany: mData.healthInsurance ? mData.healthInsurance.totalCompany : healthRecords.reduce((s, r) => s + r.company, 0),
             expectedTotal: healthRecords.reduce((s, r) => s + r.personal + r.company, 0),
             records: healthRecords
           },
@@ -636,6 +696,8 @@ document.addEventListener('DOMContentLoaded', () => {
     state.uploadedPdfFiles = [];
     state.customCostExcelBuffer = null;
     state.customCostExcelName = null;
+    state.existingEmployeesPool = null;
+    state.activeEmployeePool = [];
     state.parseResults = null;
     state.detectedMonths = [];
     state.monthlyData = {};

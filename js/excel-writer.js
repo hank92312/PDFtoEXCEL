@@ -1,6 +1,7 @@
 /**
- * excel-writer.js - 純客戶端 Excel 範本非破壞性資料注入與下載
- * 採用 JSZip 直接進行 OpenXML 位元等級安全注入，徹底根除 ExcelJS 造成的公式損毀問題
+ * excel-writer.js - 純客戶端 Excel 範本非破壞性資料注入與工作表動態管理
+ * 採用 JSZip 直接進行 OpenXML 位元等級安全注入，徹底根除公式損毀問題
+ * 支援 20 人彈性擴充、員工真實姓名動態工作表更名、全員工彙總自動連動
  */
 
 class ExcelWriter {
@@ -38,7 +39,6 @@ class ExcelWriter {
       const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('text');
 
       // 1. 抓取所有 rId 與 Target
-      // <Relationship Id="rId4" Type="..." Target="worksheets/sheet1.xml"/>
       const relsMap = new Map();
       const relRegex = /<Relationship\s+[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
       let relMatch;
@@ -50,7 +50,6 @@ class ExcelWriter {
       }
 
       // 2. 抓取 sheet name 與 r:id
-      // <sheet name="健保" sheetId="3" r:id="rId6"/>
       const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g;
       let sheetMatch;
       while ((sheetMatch = sheetRegex.exec(wbXml)) !== null) {
@@ -67,8 +66,108 @@ class ExcelWriter {
       sheetMap.set('健保', 'xl/worksheets/sheet3.xml');
       sheetMap.set('勞保', 'xl/worksheets/sheet4.xml');
       sheetMap.set('勞退', 'xl/worksheets/sheet5.xml');
+      sheetMap.set('全員工彙總', 'xl/worksheets/sheet26.xml');
     }
     return sheetMap;
+  }
+
+  /**
+   * 從既有 Excel 的「員工設定」工作表讀取目前已登記的員工名單 (以保留歷史員工)
+   * @param {JSZip} zip
+   * @param {Object} hrConfig
+   * @returns {Promise<Array<{ code: string, name: string, isReal: boolean }>>}
+   */
+  static async readEmployeesFromExcel(zip, hrConfig = (window.DEFAULT_HR_CONFIG || {})) {
+    const sheetPathMap = await this.getSheetPathMap(zip);
+    const empSheetName = (hrConfig.sheets && hrConfig.sheets.employeeSettings && hrConfig.sheets.employeeSettings.sheetName) || '員工設定';
+    const empSheetPath = sheetPathMap.get(empSheetName) || 'xl/worksheets/sheet2.xml';
+
+    const result = [];
+    const maxEmployees = 20;
+    const startRow = (hrConfig.sheets && hrConfig.sheets.employeeSettings && hrConfig.sheets.employeeSettings.startRow) || 4;
+
+    if (!zip.file(empSheetPath)) {
+      return result;
+    }
+
+    try {
+      const sheetXml = await zip.file(empSheetPath).async('text');
+      for (let i = 0; i < maxEmployees; i++) {
+        const row = startRow + i;
+        const code = `E${String(i + 1).padStart(2, '0')}`;
+        
+        // 解析儲存格中的文字 (支援 inlineStr 或一般數值/文字格式)
+        const cellRegex = new RegExp(`<c\\s+r="B${row}"[^>]*>(?:<is><t>([\\s\\S]*?)<\\/t><\\/is>|<v>([\\s\\S]*?)<\\/v>)?<\\/c>`);
+        const match = sheetXml.match(cellRegex);
+        const rawVal = match ? (match[1] || match[2] || '').trim() : '';
+
+        // 判斷是否為真實員工姓名 (排除預設如 "員工01"、"員工1" 等)
+        const isPlaceholder = !rawVal || /^(?:員工\s*\d+|[Ee]\d+)$/.test(rawVal);
+        result.push({
+          code,
+          name: rawVal || `員工${String(i + 1).padStart(2, '0')}`,
+          isReal: !isPlaceholder
+        });
+      }
+    } catch (e) {
+      console.warn('讀取既有員工設定失敗:', e);
+    }
+
+    return result;
+  }
+
+  /**
+   * 淨化工作表名稱，符合 Excel 命名規範 (排除 \ / ? * : [ ]，長度 <= 31)
+   */
+  static sanitizeSheetName(name, fallbackName = '員工') {
+    if (!name || typeof name !== 'string') return fallbackName;
+    let clean = name.replace(/[\\/?*:[\]]/g, '_').trim();
+    if (clean.length > 31) clean = clean.substring(0, 31);
+    return clean || fallbackName;
+  }
+
+  /**
+   * 動態將 workbook.xml 中的員工工作表更名為真實姓名
+   * 排除系統工作表 (使用說明、員工設定、健保、勞保、勞退、全員工彙總)
+   * @param {JSZip} zip 
+   * @param {Array<{ code: string, name: string }>} employeeMappings 
+   */
+  static async updateWorkbookSheetNames(zip, employeeMappings) {
+    if (!zip.file('xl/workbook.xml')) return;
+
+    let wbXml = await zip.file('xl/workbook.xml').async('text');
+    const systemSheets = new Set(['使用說明', '員工設定', '健保', '勞保', '勞退', '全員工彙總']);
+    const usedNames = new Set(systemSheets);
+
+    let empIndex = 0;
+
+    wbXml = wbXml.replace(/(<sheet\s+[^>]*name=")([^"]+)("([^>]*>))/g, (full, p1, oldName, p3) => {
+      // 若為系統保留工作表，絕對不改名
+      if (systemSheets.has(oldName)) {
+        return full;
+      }
+
+      // 對應第 empIndex 位員工
+      const emp = employeeMappings[empIndex];
+      empIndex++;
+
+      let targetName = oldName;
+      if (emp && emp.name && !/^(?:員工\s*\d+|[Ee]\d+)$/.test(emp.name)) {
+        targetName = this.sanitizeSheetName(emp.name, oldName);
+      }
+
+      // 防止同名衝突
+      let finalName = targetName;
+      let count = 2;
+      while (usedNames.has(finalName)) {
+        finalName = `${targetName} (${count++})`;
+      }
+      usedNames.add(finalName);
+
+      return `${p1}${finalName}${p3}`;
+    });
+
+    zip.file('xl/workbook.xml', wbXml);
   }
 
   /**
@@ -118,7 +217,7 @@ class ExcelWriter {
 
   /**
    * 非破壞性更新 cost.xlsx 年度管理表 (以 JSZip 原位修改 XML)
-   * 100% 保留所有個人分頁 SUMIFS 連動公式、樣式與格式
+   * 100% 保留所有個人分頁 SUMIFS 連動公式、全員工彙總表、樣式與格式
    */
   static async updateCostWorkbook(zip, options) {
     const {
@@ -136,7 +235,7 @@ class ExcelWriter {
     const monthMatch = targetMonth.match(/\d{4}-(\d{2})/);
     const month = monthMatch ? parseInt(monthMatch[1], 10) : 8;
 
-    // 1. 更新「員工設定」工作表姓名 (B4~B13)
+    // 1. 更新「員工設定」工作表姓名 (B4~B23，共 20 人)
     const empSheetName = hrConfig.sheets.employeeSettings.sheetName || '員工設定';
     const empSheetPath = sheetPathMap.get(empSheetName) || 'xl/worksheets/sheet2.xml';
     if (zip.file(empSheetPath) && employeeMappings.length > 0) {
@@ -150,11 +249,10 @@ class ExcelWriter {
       zip.file(empSheetPath, empXml);
     }
 
-    // 計算目標月份在各保費工作表的行號
-    // 摘要行號：1月=4, 2月=5, ..., 8月=11, 12月=15
+    // 計算目標月份在各保費工作表的行號 (每個月預留 20 人空間)
+    const employeesPerMonth = 20;
     const summaryRow = hrConfig.sheets.laborInsurance.summaryStartRow + (month - 1);
-    // 明細起始行號：1月=21, 2月=31, ..., 8月=91 (21 + (month-1)*10)
-    const detailMonthStartRow = hrConfig.sheets.laborInsurance.detailStartRow + (month - 1) * 10;
+    const detailMonthStartRow = hrConfig.sheets.laborInsurance.detailStartRow + (month - 1) * employeesPerMonth;
 
     // 2. 更新勞保 (sheet4.xml)
     const laborSheetName = hrConfig.sheets.laborInsurance.sheetName || '勞保';
@@ -164,7 +262,7 @@ class ExcelWriter {
       // 摘要
       laborXml = this.setNumericCell(laborXml, `B${summaryRow}`, laborData.totalCompany || 0);
       laborXml = this.setTextCell(laborXml, `D${summaryRow}`, '已核對');
-      // 明細 10 人 (C:個人, D:公司)
+      // 明細 20 人 (C:個人, D:公司)
       employeeMappings.forEach((emp, idx) => {
         const row = detailMonthStartRow + idx;
         const record = laborData.records.find(r => r.name === emp.name);
@@ -184,7 +282,7 @@ class ExcelWriter {
       // 摘要
       pensionXml = this.setNumericCell(pensionXml, `B${summaryRow}`, pensionData.expectedTotal || 0);
       pensionXml = this.setTextCell(pensionXml, `D${summaryRow}`, '已核對');
-      // 明細 10 人 (C:雇主提繳, D:個人自提)
+      // 明細 20 人 (C:雇主提繳, D:個人自提)
       employeeMappings.forEach((emp, idx) => {
         const row = detailMonthStartRow + idx;
         const record = pensionData.records.find(r => r.name === emp.name);
@@ -204,7 +302,7 @@ class ExcelWriter {
       // 摘要：寫入公司實際支付健保費總額 (投保單位負擔)，避免計入員工個人自付額導致人事成本失真
       healthXml = this.setNumericCell(healthXml, `B${summaryRow}`, healthData.totalCompany || 0);
       healthXml = this.setTextCell(healthXml, `D${summaryRow}`, '已核對');
-      // 明細 10 人 (C:個人負擔, D:公司負擔)
+      // 明細 20 人 (C:個人負擔, D:公司負擔)
       employeeMappings.forEach((emp, idx) => {
         const row = detailMonthStartRow + idx;
         const record = healthData.records.find(r => r.name === emp.name);
@@ -215,6 +313,9 @@ class ExcelWriter {
       });
       zip.file(healthSheetPath, healthXml);
     }
+
+    // 5. 動態將員工分頁更名為真實姓名
+    await this.updateWorkbookSheetNames(zip, employeeMappings);
   }
 
   /**

@@ -15,7 +15,7 @@ const DEFAULT_HR_CONFIG = {
       codeCol: 'A',
       nameCol: 'B',
       startRow: 4,
-      endRow: 13
+      endRow: 23
     },
     laborInsurance: {
       sheetName: '勞保',
@@ -25,7 +25,7 @@ const DEFAULT_HR_CONFIG = {
       summaryStartRow: 4,
       summaryEndRow: 15,
       detailStartRow: 21,
-      detailEndRow: 140,
+      detailEndRow: 260,
       detailMonthCol: 'A',
       detailNameCol: 'B',
       detailPersonalCol: 'C',
@@ -39,7 +39,7 @@ const DEFAULT_HR_CONFIG = {
       summaryStartRow: 4,
       summaryEndRow: 15,
       detailStartRow: 21,
-      detailEndRow: 140,
+      detailEndRow: 260,
       detailMonthCol: 'A',
       detailNameCol: 'B',
       detailEmployerCol: 'C', // 雇主提繳
@@ -53,7 +53,7 @@ const DEFAULT_HR_CONFIG = {
       summaryStartRow: 4,
       summaryEndRow: 15,
       detailStartRow: 21,
-      detailEndRow: 140,
+      detailEndRow: 260,
       detailMonthCol: 'A',
       detailNameCol: 'B',
       detailPersonalCol: 'C',
@@ -61,7 +61,7 @@ const DEFAULT_HR_CONFIG = {
     }
   },
 
-  // 預設員工代號名冊
+  // 預設員工代號名冊 (支援擴充至 20 人)
   defaultEmployees: [
     { code: 'E01', name: '吳金燕' },
     { code: 'E02', name: '易金香' },
@@ -73,6 +73,16 @@ const DEFAULT_HR_CONFIG = {
     { code: 'E08', name: '員工08' },
     { code: 'E09', name: '員工09' },
     { code: 'E10', name: '員工10' },
+    { code: 'E11', name: '員工11' },
+    { code: 'E12', name: '員工12' },
+    { code: 'E13', name: '員工13' },
+    { code: 'E14', name: '員工14' },
+    { code: 'E15', name: '員工15' },
+    { code: 'E16', name: '員工16' },
+    { code: 'E17', name: '員工17' },
+    { code: 'E18', name: '員工18' },
+    { code: 'E19', name: '員工19' },
+    { code: 'E20', name: '員工20' },
   ],
 
   // 報表指紋關鍵字
