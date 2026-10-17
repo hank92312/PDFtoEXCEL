@@ -10,8 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     customCostExcelBuffer: null, // ArrayBuffer or null
     customCostExcelName: null,
     parseResults: null,
-    mergedEmployees: [],
-    targetMonth: '2026-08-01',
+    detectedMonths: [], // 所有解析出的月份清單，例如 ['2026-08-01', '2026-09-01']
+    monthlyData: {}, // key 為 ym，值為 { mergedEmployees, laborInsurance, laborPension, healthInsurance }
+    activeMonth: '2026-08-01', // 目前檢視/編輯中的月份
     hrConfig: window.ConfigManager.getHRConfig()
   };
 
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 核對面板
     previewPanel: document.getElementById('previewPanel'),
     monthSelect: document.getElementById('monthSelect'),
+    multiMonthBadge: document.getElementById('multiMonthBadge'),
     templateInfo: document.getElementById('templateInfo'),
     btnDownloadTemplate: document.getElementById('btnDownloadTemplate'),
     btnReset: document.getElementById('btnReset'),
@@ -98,10 +100,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     dom.dropzone.addEventListener('drop', handleFileDrop);
 
-    // 月份切換
+    // 月份切換事件
     dom.monthSelect.addEventListener('change', (e) => {
-      state.targetMonth = e.target.value;
-      showToast(`已切換目標寫入月份至：${e.target.value.substring(0, 7)}`, 'info');
+      switchActiveMonth(e.target.value);
+      showToast(`已切換檢視月份至：${e.target.value.substring(0, 7)}`, 'info');
     });
 
     // 重設清空
@@ -287,30 +289,53 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 執行 PDF 解析管線
+   * 執行 PDF 解析管線 (支援多月份批次聚合)
    */
   async function runParsingPipeline() {
-    showToast('正在解析 PDF 清冊內容與眷屬關係...', 'info');
+    showToast('正在解析 PDF 清冊內容、保費年月與眷屬關係...', 'info');
 
     try {
       const results = await PdfParser.parseAllFiles(state.uploadedPdfFiles);
       state.parseResults = results;
+      state.detectedMonths = results.detectedMonths || [];
+      state.monthlyData = {};
 
-      // 自動設定目標月份
-      if (results.detectedYearMonth) {
-        state.targetMonth = results.detectedYearMonth;
-        dom.monthSelect.value = results.detectedYearMonth;
+      // 針對每個偵測到的月份分別彙整員工名冊
+      state.detectedMonths.forEach(ym => {
+        const mObj = results.byMonth[ym];
+        const merged = mergeEmployeeDataForMonth(mObj);
+        state.monthlyData[ym] = {
+          yearMonth: ym,
+          label: mObj.label,
+          laborInsurance: mObj.laborInsurance,
+          laborPension: mObj.laborPension,
+          healthInsurance: mObj.healthInsurance,
+          mergedEmployees: merged
+        };
+      });
+
+      // 檢查是否有多個月份，動態更新 UI 提示與按鈕
+      if (state.detectedMonths.length > 1) {
+        const monthNames = state.detectedMonths.map(m => m.substring(5, 7) + '月').join('、');
+        dom.multiMonthBadge.style.display = 'inline-flex';
+        dom.multiMonthBadge.innerHTML = `<span class="pulse-dot"></span> 🌟 批次模式：已自動識別 ${state.detectedMonths.length} 個月份 (${monthNames})，匯出時將一次全數寫入！`;
+        dom.btnExportCostExcel.innerHTML = `確認無誤，批次寫入 (${state.detectedMonths.length} 個月份) 並下載 EXCEL`;
+      } else {
+        dom.multiMonthBadge.style.display = 'none';
+        dom.btnExportCostExcel.innerHTML = '確認無誤，寫入並下載 EXCEL';
       }
 
-      // 彙整員工資料
-      mergeEmployeeData();
-
-      // 渲染勾稽卡片與表格
-      renderAuditCards();
-      renderEmployeeTable();
+      // 預設切換至第一個偵測到的月份
+      state.activeMonth = state.detectedMonths[0] || '2026-08-01';
+      switchActiveMonth(state.activeMonth);
 
       dom.previewPanel.style.display = 'block';
-      showToast('PDF 清冊解析完成！請核對下方勾稽與名冊', 'success');
+
+      if (state.detectedMonths.length > 1) {
+        showToast(`🎉 成功識別 ${state.detectedMonths.length} 個月份共 ${state.uploadedPdfFiles.length} 份檔案！請切換月份核對`, 'success');
+      } else {
+        showToast('PDF 清冊解析完成！請核對下方勾稽與名冊', 'success');
+      }
     } catch (err) {
       console.error('解析失敗:', err);
       showToast(`解析失敗: ${err.message}`, 'error');
@@ -318,10 +343,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 整合多份報表的員工明細
+   * 切換當前正在檢視與編輯的月份
    */
-  function mergeEmployeeData() {
-    const { laborInsurance, laborPension, healthInsurance } = state.parseResults;
+  function switchActiveMonth(ym) {
+    state.activeMonth = ym;
+    dom.monthSelect.value = ym;
+    renderAuditCardsForMonth(ym);
+    renderEmployeeTableForMonth(ym);
+  }
+
+  /**
+   * 針對單一月份整合多份報表的員工明細
+   */
+  function mergeEmployeeDataForMonth(monthObj) {
+    const { laborInsurance, laborPension, healthInsurance } = monthObj;
     const empMap = new Map();
 
     // 1. 勞保
@@ -365,7 +400,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 對照預設代號 E01~E10
     const merged = Array.from(empMap.values());
     merged.forEach((emp, idx) => {
-      // 找尋預設清冊中是否有同名
       const foundDefault = state.hrConfig.defaultEmployees.find(d => d.name === emp.name);
       if (foundDefault) {
         emp.code = foundDefault.code;
@@ -374,29 +408,32 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    state.mergedEmployees = merged;
+    return merged;
   }
 
   /**
-   * 渲染官方勾稽指標卡片
+   * 渲染指定月份的官方勾稽指標卡片
    */
-  function renderAuditCards() {
-    const { laborInsurance, laborPension, healthInsurance } = state.parseResults;
+  function renderAuditCardsForMonth(ym) {
+    const monthData = state.monthlyData[ym] || (state.parseResults && state.parseResults.byMonth && state.parseResults.byMonth[ym]) || null;
+    const labor = monthData ? monthData.laborInsurance : null;
+    const pension = monthData ? monthData.laborPension : null;
+    const health = monthData ? monthData.healthInsurance : null;
 
     // 勞保
-    if (laborInsurance) {
-      dom.laborCompanyTotal.textContent = `$${laborInsurance.totalCompany.toLocaleString()}`;
-      dom.laborPersonalTotal.textContent = `個人負擔加總: $${laborInsurance.totalPersonal.toLocaleString()}`;
+    if (labor) {
+      dom.laborCompanyTotal.textContent = `$${labor.totalCompany.toLocaleString()}`;
+      dom.laborPersonalTotal.textContent = `個人負擔加總: $${labor.totalPersonal.toLocaleString()}`;
     } else {
-      dom.laborCompanyTotal.textContent = '未上傳';
+      dom.laborCompanyTotal.textContent = '此月未上傳';
       dom.laborPersonalTotal.textContent = '-';
     }
 
     // 勞退
-    if (laborPension) {
-      dom.pensionEmployerTotal.textContent = `$${laborPension.totalEmployer.toLocaleString()}`;
-      dom.pensionExpectedTotal.textContent = `官方應繳總額: $${laborPension.expectedTotal.toLocaleString()}`;
-      if (laborPension.isBalanced) {
+    if (pension) {
+      dom.pensionEmployerTotal.textContent = `$${pension.totalEmployer.toLocaleString()}`;
+      dom.pensionExpectedTotal.textContent = `官方應繳總額: $${pension.expectedTotal.toLocaleString()}`;
+      if (pension.isBalanced) {
         dom.pensionAuditTag.className = 'audit-tag tag-ok';
         dom.pensionAuditTag.textContent = '✅ 勾稽一致';
       } else {
@@ -404,16 +441,16 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.pensionAuditTag.textContent = '⚠️ 總額不符';
       }
     } else {
-      dom.pensionEmployerTotal.textContent = '未上傳';
+      dom.pensionEmployerTotal.textContent = '此月未上傳';
       dom.pensionExpectedTotal.textContent = '-';
       dom.pensionAuditTag.textContent = '未上傳';
     }
 
     // 健保
-    if (healthInsurance) {
-      dom.healthGrandTotal.textContent = `$${healthInsurance.actualTotal.toLocaleString()}`;
-      dom.healthExpectedTotal.textContent = `官方應繳總額: $${healthInsurance.expectedTotal.toLocaleString()} (單位: $${healthInsurance.totalCompany.toLocaleString()})`;
-      if (healthInsurance.isBalanced) {
+    if (health) {
+      dom.healthGrandTotal.textContent = `$${health.actualTotal.toLocaleString()}`;
+      dom.healthExpectedTotal.textContent = `官方應繳總額: $${health.expectedTotal.toLocaleString()} (單位: $${health.totalCompany.toLocaleString()})`;
+      if (health.isBalanced) {
         dom.healthAuditTag.className = 'audit-tag tag-ok';
         dom.healthAuditTag.textContent = '✅ 勾稽一致';
       } else {
@@ -421,44 +458,56 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.healthAuditTag.textContent = '⚠️ 總額不符';
       }
     } else {
-      dom.healthGrandTotal.textContent = '未上傳';
+      dom.healthGrandTotal.textContent = '此月未上傳';
       dom.healthExpectedTotal.textContent = '-';
       dom.healthAuditTag.textContent = '未上傳';
     }
   }
 
   /**
-   * 渲染員工資料明細表格
+   * 渲染指定月份的員工明細表格
    */
-  function renderEmployeeTable() {
+  function renderEmployeeTableForMonth(ym) {
     dom.employeeTableBody.innerHTML = '';
+    const mData = state.monthlyData[ym];
+    const employees = mData ? mData.mergedEmployees : [];
 
-    state.mergedEmployees.forEach((emp, idx) => {
+    if (employees.length === 0) {
+      const emptyTr = document.createElement('tr');
+      emptyTr.innerHTML = `<td colspan="9" style="text-align: center; color: var(--text-muted); padding: 30px;">該月份 (${ym.substring(0, 7)}) 尚未上傳 PDF 清冊資料</td>`;
+      dom.employeeTableBody.appendChild(emptyTr);
+      return;
+    }
+
+    employees.forEach((emp, idx) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${emp.name}</strong></td>
         <td>
-          <select class="table-select" data-idx="${idx}" data-field="code">
+          <select class="table-select" data-ym="${ym}" data-idx="${idx}" data-field="code">
             ${state.hrConfig.defaultEmployees.map(d => `
               <option value="${d.code}" ${emp.code === d.code ? 'selected' : ''}>${d.code} (${d.name})</option>
             `).join('')}
           </select>
         </td>
-        <td><input type="number" class="table-num-input" data-idx="${idx}" data-field="healthPersonal" value="${emp.healthPersonal}" /></td>
-        <td><input type="number" class="table-num-input" data-idx="${idx}" data-field="healthCompany" value="${emp.healthCompany}" /></td>
-        <td><input type="number" class="table-num-input" data-idx="${idx}" data-field="laborPersonal" value="${emp.laborPersonal}" /></td>
-        <td><input type="number" class="table-num-input" data-idx="${idx}" data-field="laborCompany" value="${emp.laborCompany}" /></td>
-        <td><input type="number" class="table-num-input" data-idx="${idx}" data-field="pensionEmployer" value="${emp.pensionEmployer}" /></td>
+        <td><input type="number" class="table-num-input" data-ym="${ym}" data-idx="${idx}" data-field="healthPersonal" value="${emp.healthPersonal}" /></td>
+        <td><input type="number" class="table-num-input" data-ym="${ym}" data-idx="${idx}" data-field="healthCompany" value="${emp.healthCompany}" /></td>
+        <td><input type="number" class="table-num-input" data-ym="${ym}" data-idx="${idx}" data-field="laborPersonal" value="${emp.laborPersonal}" /></td>
+        <td><input type="number" class="table-num-input" data-ym="${ym}" data-idx="${idx}" data-field="laborCompany" value="${emp.laborCompany}" /></td>
+        <td><input type="number" class="table-num-input" data-ym="${ym}" data-idx="${idx}" data-field="pensionEmployer" value="${emp.pensionEmployer}" /></td>
         <td><span style="font-size: 0.8rem; color: var(--text-muted);">${emp.dependentsInfo || '-'}</span></td>
         <td style="text-align: center; white-space: nowrap;"><span class="audit-tag tag-ok" style="position: static; font-size: 0.76rem; white-space: nowrap; display: inline-block;">已核對</span></td>
       `;
 
-      // 監聽數值微調事件
+      // 監聽數值微調事件 (支援多月份獨立更新)
       tr.querySelectorAll('input, select').forEach(input => {
         input.addEventListener('change', (e) => {
           const field = e.target.dataset.field;
           const index = parseInt(e.target.dataset.idx, 10);
-          state.mergedEmployees[index][field] = field === 'code' ? e.target.value : Number(e.target.value);
+          const targetYm = e.target.dataset.ym;
+          if (state.monthlyData[targetYm] && state.monthlyData[targetYm].mergedEmployees[index]) {
+            state.monthlyData[targetYm].mergedEmployees[index][field] = field === 'code' ? e.target.value : Number(e.target.value);
+          }
         });
       });
 
@@ -467,7 +516,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * 寫入並匯出 cost.xlsx (基於原位 XML 安全注入，徹底避免損毀)
+   * 寫入並匯出 cost.xlsx (支援多月份批次一次性注入)
    */
   async function exportCostExcel() {
     if (!state.parseResults) {
@@ -475,7 +524,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    showToast('正在將資料安全寫入年度 EXCEL 表單...', 'info');
+    const monthsToExport = (state.detectedMonths && state.detectedMonths.length > 0)
+      ? state.detectedMonths
+      : [state.activeMonth];
+
+    showToast(`正在將 ${monthsToExport.length} 個月份安全寫入年度 EXCEL 表單...`, 'info');
 
     try {
       // 載入 ZIP 容器 (優先使用使用者上傳的，否則載入 ./cost.xlsx 預設範本)
@@ -490,72 +543,90 @@ document.addEventListener('DOMContentLoaded', () => {
         throw loadErr;
       }
 
-      // 準備員工名冊對照 (依照 E01~E10 排序)
-      const empMappings = state.hrConfig.defaultEmployees.map(d => {
-        const found = state.mergedEmployees.find(m => m.code === d.code);
-        return {
-          code: d.code,
-          name: found ? found.name : d.name
-        };
-      });
+      // 依序寫入所有偵測到的月份
+      for (const ym of monthsToExport) {
+        const mData = state.monthlyData[ym];
+        if (!mData || !mData.mergedEmployees) continue;
 
-      // 整理各項險種寫入紀錄
-      const laborRecords = state.mergedEmployees.map(e => ({
-        name: e.name,
-        personal: e.laborPersonal,
-        company: e.laborCompany
-      }));
+        // 準備員工名冊對照 (依照 E01~E10 排序)
+        const empMappings = state.hrConfig.defaultEmployees.map(d => {
+          const found = mData.mergedEmployees.find(m => m.code === d.code);
+          return {
+            code: d.code,
+            name: found ? found.name : d.name
+          };
+        });
 
-      const pensionRecords = state.mergedEmployees.map(e => ({
-        name: e.name,
-        employerAmount: e.pensionEmployer,
-        personalAmount: 0
-      }));
+        // 整理各項險種寫入紀錄
+        const laborRecords = mData.mergedEmployees.map(e => ({
+          name: e.name,
+          personal: e.laborPersonal || 0,
+          company: e.laborCompany || 0
+        }));
 
-      const healthRecords = state.mergedEmployees.map(e => ({
-        name: e.name,
-        personal: e.healthPersonal,
-        company: e.healthCompany
-      }));
+        const pensionRecords = mData.mergedEmployees.map(e => ({
+          name: e.name,
+          employerAmount: e.pensionEmployer || 0,
+          personalAmount: 0
+        }));
 
-      // 執行非破壞性安全更新
-      await ExcelWriter.updateCostWorkbook(zip, {
-        targetMonth: state.targetMonth,
-        employeeMappings: empMappings,
-        laborData: {
-          totalCompany: laborRecords.reduce((s, r) => s + r.company, 0),
-          records: laborRecords
-        },
-        pensionData: {
-          expectedTotal: pensionRecords.reduce((s, r) => s + r.employerAmount, 0),
-          records: pensionRecords
-        },
-        healthData: {
-          expectedTotal: healthRecords.reduce((s, r) => s + r.personal + r.company, 0),
-          records: healthRecords
-        },
-        hrConfig: state.hrConfig
-      });
+        const healthRecords = mData.mergedEmployees.map(e => ({
+          name: e.name,
+          personal: e.healthPersonal || 0,
+          company: e.healthCompany || 0
+        }));
 
-      // 智慧產出檔名：若使用者有上傳既有 Excel，智慧去除先前的年月後綴並更新為當前月份
-      const yyyymm = state.targetMonth.substring(0, 7).replace('-', '_');
-      let outName = `cost_${yyyymm}.xlsx`;
+        // 執行該月份的原位安全注入
+        await ExcelWriter.updateCostWorkbook(zip, {
+          targetMonth: ym,
+          employeeMappings: empMappings,
+          laborData: {
+            totalCompany: laborRecords.reduce((s, r) => s + r.company, 0),
+            records: laborRecords
+          },
+          pensionData: {
+            expectedTotal: pensionRecords.reduce((s, r) => s + r.employerAmount, 0),
+            records: pensionRecords
+          },
+          healthData: {
+            expectedTotal: healthRecords.reduce((s, r) => s + r.personal + r.company, 0),
+            records: healthRecords
+          },
+          hrConfig: state.hrConfig
+        });
+      }
+
+      // 智慧產出檔名：單月份與多月份批次智慧命名
+      let prefix = 'cost';
       if (state.customCostExcelName) {
-        let baseName = state.customCostExcelName.replace(/\.xlsx$/i, '');
-        // 智慧過濾先前產出時附加的年月 (例如 _2026_08, _2026-08, _202608, _08)，避免連續跨月產生像 cost_2026_08_2026_09.xlsx
-        baseName = baseName.replace(/_\d{4}[_-]\d{2}$/, '').replace(/_\d{4}\d{2}$/, '').replace(/_\d{2}$/, '');
-        outName = `${baseName}_${yyyymm}.xlsx`;
+        prefix = state.customCostExcelName.replace(/\.xlsx$/i, '')
+          .replace(/_\d{4}[_-]\d{2}(?:_至_\d{2})?$/, '')
+          .replace(/_\d{4}\d{2}$/, '')
+          .replace(/_\d{2}$/, '');
+      }
+
+      let outName;
+      if (monthsToExport.length === 1) {
+        const yyyymm = monthsToExport[0].substring(0, 7).replace('-', '_');
+        outName = `${prefix}_${yyyymm}.xlsx`;
+      } else {
+        const firstYm = monthsToExport[0].substring(0, 7).replace('-', '_');
+        const lastMonthStr = monthsToExport[monthsToExport.length - 1].substring(5, 7);
+        outName = `${prefix}_${firstYm}_至_${lastMonthStr}.xlsx`;
       }
 
       await ExcelWriter.downloadZip(zip, outName);
 
-      showToast(`🎉 成功更新！已產出並下載：${outName}`, 'success');
+      if (monthsToExport.length > 1) {
+        showToast(`🎉 成功批次更新！已將 ${monthsToExport.length} 個月份寫入並下載：${outName}`, 'success');
+      } else {
+        showToast(`🎉 成功更新！已產出並下載：${outName}`, 'success');
+      }
     } catch (err) {
       console.error('匯出失敗:', err);
       showToast(`匯出失敗: ${err.message}`, 'error');
     }
   }
-
 
   /**
    * 重設清空
@@ -565,8 +636,11 @@ document.addEventListener('DOMContentLoaded', () => {
     state.customCostExcelBuffer = null;
     state.customCostExcelName = null;
     state.parseResults = null;
-    state.mergedEmployees = [];
+    state.detectedMonths = [];
+    state.monthlyData = {};
     dom.previewPanel.style.display = 'none';
+    dom.multiMonthBadge.style.display = 'none';
+    dom.btnExportCostExcel.innerHTML = '確認無誤，寫入並下載 EXCEL';
     dom.templateInfo.innerHTML = '<span class="pulse-indicator"></span> 使用範本：cost.xlsx (預設內建範本)';
     updateFileBadgesUI();
     showToast('已重設所有檔案與資料', 'info');

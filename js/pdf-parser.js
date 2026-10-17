@@ -20,7 +20,14 @@ class PdfParser {
    */
   static async extractLinesWithCoords(arrayBuffer) {
     this.init();
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+    // 透過 slice 複製一份獨立的 ArrayBuffer 副本，防止 Web Worker 抽乾 (detach) 原記憶體
+    let buf = arrayBuffer;
+    if (buf instanceof ArrayBuffer) {
+      buf = buf.slice(0);
+    } else if (buf && buf.buffer instanceof ArrayBuffer) {
+      buf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    }
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) });
     const pdf = await loadingTask.promise;
     
     const pages = [];
@@ -326,16 +333,19 @@ class PdfParser {
   }
 
   /**
-   * 統一多檔解析介面
+   * 統一多檔解析介面 (支援多月份自動聚合分組)
    * @param {Array<{name: string, arrayBuffer: ArrayBuffer}>} files 
    */
   static async parseAllFiles(files) {
     const results = {
+      byMonth: {},           // Map<yearMonth, { yearMonth, label, laborInsurance, laborPension, healthInsurance }>
+      detectedMonths: [],    // 偵測到的所有月份清單 (由小到大排序)
+      summaryList: [],
+      // 向下相容單月份介面
       laborInsurance: null,
       laborPension: null,
       healthInsurance: null,
-      detectedYearMonth: null,
-      summaryList: []
+      detectedYearMonth: null
     };
 
     for (const file of files) {
@@ -343,27 +353,74 @@ class PdfParser {
       const fullText = pages.flatMap(p => p.lines.map(l => l.text)).join('\n');
       const docType = this.detectType(fullText, file.name);
 
+      let parsedData = null;
+      let typeLabel = '未知格式';
+
       if (docType === 'laborInsurance') {
-        const res = this.parseLaborInsurance(pages);
-        results.laborInsurance = res;
-        if (!results.detectedYearMonth && res.yearMonth) results.detectedYearMonth = res.yearMonth;
-        results.summaryList.push({ fileName: file.name, type: '勞保明細', count: res.records.length, status: 'ok' });
+        parsedData = this.parseLaborInsurance(pages);
+        typeLabel = '勞保明細';
       } else if (docType === 'laborPension') {
-        const res = this.parseLaborPension(pages);
-        results.laborPension = res;
-        if (!results.detectedYearMonth && res.yearMonth) results.detectedYearMonth = res.yearMonth;
-        results.summaryList.push({ fileName: file.name, type: '勞退雇主提繳', count: res.records.length, status: res.isBalanced ? 'ok' : 'warn', total: res.expectedTotal });
+        parsedData = this.parseLaborPension(pages);
+        typeLabel = '勞退雇主提繳';
       } else if (docType === 'healthInsurance') {
-        const res = this.parseHealthInsurance(pages);
-        results.healthInsurance = res;
-        if (!results.detectedYearMonth && res.yearMonth) results.detectedYearMonth = res.yearMonth;
-        results.summaryList.push({ fileName: file.name, type: '健保明細', count: res.records.length, status: res.isBalanced ? 'ok' : 'warn', total: res.expectedTotal });
+        parsedData = this.parseHealthInsurance(pages);
+        typeLabel = '健保明細';
+      }
+
+      if (parsedData) {
+        // 若 PDF 內文未能擷取年月，則由檔名補強 (例如 cost_公司勞保明細11508.pdf -> 2026-08-01)
+        if (!parsedData.yearMonth) {
+          const fnMatch = file.name.match(/1(\d{2})(\d{2})/);
+          if (fnMatch) {
+            const rocY = parseInt(fnMatch[1], 10);
+            const m = parseInt(fnMatch[2], 10);
+            parsedData.yearMonth = `${rocY + 1911}-${String(m).padStart(2, '0')}-01`;
+          } else {
+            parsedData.yearMonth = '2026-08-01'; // 預設
+          }
+        }
+
+        const ym = parsedData.yearMonth;
+        if (!results.byMonth[ym]) {
+          const parts = ym.split('-');
+          results.byMonth[ym] = {
+            yearMonth: ym,
+            label: `${parts[0]} 年 ${parts[1]} 月`,
+            laborInsurance: null,
+            laborPension: null,
+            healthInsurance: null
+          };
+          results.detectedMonths.push(ym);
+        }
+
+        // 依險種存入該月份分組
+        results.byMonth[ym][docType] = parsedData;
+
+        results.summaryList.push({
+          fileName: file.name,
+          type: typeLabel,
+          yearMonth: ym,
+          count: parsedData.records ? parsedData.records.length : 0,
+          status: (parsedData.isBalanced === false) ? 'warn' : 'ok',
+          total: parsedData.expectedTotal || parsedData.totalCompany || 0
+        });
       } else if (docType === 'po_standard') {
-        // 原有採購單模式
         results.summaryList.push({ fileName: file.name, type: '採購單 (PO)', count: 1, status: 'ok' });
       } else {
         results.summaryList.push({ fileName: file.name, type: '未知格式', count: 0, status: 'error' });
       }
+    }
+
+    // 將所有偵測到的月份由小到大排序 (例如 ['2026-08-01', '2026-09-01'])
+    results.detectedMonths.sort();
+
+    // 建立向下相容的預設月份 (預設指向第一個偵測到的月份)
+    if (results.detectedMonths.length > 0) {
+      const defaultYm = results.detectedMonths[0];
+      results.detectedYearMonth = defaultYm;
+      results.laborInsurance = results.byMonth[defaultYm].laborInsurance;
+      results.laborPension = results.byMonth[defaultYm].laborPension;
+      results.healthInsurance = results.byMonth[defaultYm].healthInsurance;
     }
 
     return results;

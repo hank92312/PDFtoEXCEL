@@ -2,8 +2,8 @@ $e = New-Object -ComObject Excel.Application
 $e.Visible = $false
 $e.DisplayAlerts = $false
 try {
-  $w = $e.Workbooks.Open("D:\PDFtoEXCEL\scripts\test_cost_month8_and_9.xlsx")
-  Write-Host "OPEN MULTI-MONTH SUCCESS!"
+  $w = $e.Workbooks.Open("D:\PDFtoEXCEL\scripts\test_batch_8_and_9.xlsx")
+  Write-Host "OPEN MULTI-MONTH BATCH SUCCESS!"
 
   # 員工01 在第 6 個工作表
   $ws = $w.Worksheets.Item(6)
